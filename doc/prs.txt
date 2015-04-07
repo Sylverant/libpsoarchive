@@ -1,0 +1,77 @@
+Quick and Dirty PRS Compression Documentation
+---------------------------------------------
+
+--------------------------------------------------------------------------------
+                                 Introduction
+--------------------------------------------------------------------------------
+
+This text file explains the PRS compression algorithm, as used in the Phantasy
+Star Online series of games. This compression algorithm is basically a fairly
+standard implementation of the Lempel-Ziv '77 (LZ77) compression algorithm,
+framed in a manner that Sega apparently found fit. LZ77 is a very common
+lossless compression algorithm used as the basis for many compressed file
+formats, including PNG images, Zip and GZip archives, among many others.
+
+There isn't exactly a "file format" to go along with PRS. Compressed data
+streams are stored as-is in files, which often have a .prs extension. PSO uses
+PRS compression in many places, including in many of the data files used by the
+game, as well as in the quest files delivered by the server.
+
+This document doesn't seek to explain how LZ77 itself works. This document only
+explains the framing used in the compressed streams used by PSO. If you want to
+learn about LZ77 itself, Wikipedia is a good place to start. Look to this
+article to get started: https://en.wikipedia.org/wiki/LZ77_and_LZ78 .
+
+Now that the intro is out of the way, onto the format...
+
+--------------------------------------------------------------------------------
+                                    Format
+--------------------------------------------------------------------------------
+
+Maximum (sane) size for a given input size 'n':
+    n + ceil((n + 2) / 8) + 2
+This case is triggered by completely incompressible data, and should be
+exceedingly rare in practice. The overhead over n is the framing overhead needed
+by the PRS compressed stream for a completely uncompressible stream.
+
+PRS maintains a sliding window of up to 8KiB in which it looks for matches for
+the current pointer in the file for compression. Matches can be anywhere from
+1 to 255 bytes in length. A match of length 1 will actually require more space
+to store than simply copying the raw byte, so in practice, the shortest match
+you should worry about is of length 2 (note, a bunch of matches of length 1
+may cause you to exceed the "maximum sane" compressed size given above).
+
+PRS also maintains a bit pattern that is used to interpret the data as it is
+read from the stream. The bit pattern is written to the file at the first byte
+and whenever a new byte is required to hold additional bits after that. That is
+to say, you will read the pattern byte from the file, and use that to interpret
+the following bytes based on the pattern specified.
+
+Bit Patterns:
+   1    - Copy the next byte raw from the input to the output.
+
+   00nn - Treat nn as a two-bit number (least-significant bit first). Read the
+          next byte of the file. The byte read is the offset. Add 2 to nn to
+          determine the number of bytes to copy from the specified offset to the
+          current position in the file. Thus, this form can be used for copying
+          between 2 and 5 bytes from a window of 255 bytes back in the
+          uncompressed file.
+
+   01   - Read the next two bytes of the file. Then refer to the table below.
+
+01 Patterns:
+
+If the next two bytes of the file are both 0, you have reached the end of the
+compressed stream. End reading now.
+
+If any of the low-order three bits of the first byte read are non-zero, build
+your offset and size as follows, and do the copy in much the same way as shown
+above for the 00nn bit pattern:
+    size = (byte[0] & 0x07) + 2
+    offset = (byte[1] << 5) | (byte[0] >> 3)
+
+If all three low-order bits of the first byte are zero, read an additional byte
+from the input stream. Then form the size and offsets as follows, and do the
+data copy in the same way specified in the 00nn bit pattern:
+    size = byte[2] + 1
+    offset = (byte[1] << 5) | (byte[0] >> 3)
