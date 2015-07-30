@@ -56,6 +56,27 @@ int pso_prs_compress(const uint8_t *src, uint8_t **dst, size_t src_len);
 */
 int pso_prs_archive(const uint8_t *src, uint8_t **dst, size_t src_len);
 
+/* Archive a buffer in PRS format into a preallocated buffer.
+
+   This function archives the data in the src buffer into a preallocated buffer.
+   This function will always produce output that is larger in size than the
+   input data (it does not actually compress the output. There's probably no
+   good reason to ever use this, but it is here if you want it for some reason.
+
+   The buffer must be at least as large as what prs_max_compressed_size returns
+   when given the same input length.
+
+   All the notes about parameters and return values from prs_compress also apply
+   to this function. The size of the output from this function will be equal to
+   the return value of prs_max_compressed_size when called on the same length.
+
+   While I said that pso_prs_archive probably has no good use, this function has
+   even less potentially good uses. Basically, it's used internally by
+   pso_prsd_archive, and that's about the only place it's probably applicable.
+*/
+int pso_prs_archive2(const uint8_t *src, uint8_t *dst, size_t src_len,
+                     size_t dst_len);
+
 /* Return the maximum size of archiving a buffer in PRS format.
 
    This function returns the size that prs_archive will spit out. This is used
