@@ -35,6 +35,7 @@
 #include <stddef.h>
 
 #include "psoarchive-error.h"
+#include "PRS.h"
 
 #define MAX_WINDOW   0x2000
 #define WINDOW_MASK  (MAX_WINDOW - 1)
@@ -285,6 +286,27 @@ static void add_intermediates(struct prs_comp_cxt *cxt, struct prs_hash_cxt *hc,
     if you really want it.
  ******************************************************************************/
 int pso_prs_archive(const uint8_t *src, uint8_t **dst, size_t src_len) {
+    size_t dl = pso_prs_max_compressed_size(src_len);
+    int rv;
+    uint8_t *db;
+
+    /* Allocate our "compressed" buffer. */
+    if(!(db = (uint8_t *)malloc(dl)))
+        return PSOARCHIVE_EMEM;
+
+    /* Call on the function for archiving into a preallocated buffer to do the
+       real work. */
+    if((rv = pso_prs_archive2(src, db, src_len, dl)) < 0) {
+        free(db);
+        return rv;
+    }
+
+    *dst = db;
+    return rv;
+}
+
+int pso_prs_archive2(const uint8_t *src, uint8_t *dst, size_t src_len,
+                     size_t dst_len) {
     struct prs_comp_cxt cxt;
     int rv;
 
@@ -296,16 +318,15 @@ int pso_prs_archive(const uint8_t *src, uint8_t **dst, size_t src_len) {
     if(!src_len)
         return PSOARCHIVE_EINVAL;
 
+    if(dst_len < pso_prs_max_compressed_size(src_len))
+        return PSOARCHIVE_ENOSPC;
+
     /* Clear the context and fill in what we need to do our job. */
     memset(&cxt, 0, sizeof(cxt));
     cxt.src = src;
     cxt.src_len = src_len;
-    cxt.dst_len = pso_prs_max_compressed_size(src_len);
-
-    /* Allocate our "compressed" buffer. */
-    if(!(cxt.dst = (uint8_t *)malloc(cxt.dst_len)))
-        return PSOARCHIVE_EMEM;
-
+    cxt.dst_len = dst_len;
+    cxt.dst = dst;
     cxt.flag_ptr = cxt.dst;
 
     /* Copy each byte, filling in the flags as we go along. */
@@ -323,7 +344,6 @@ int pso_prs_archive(const uint8_t *src, uint8_t **dst, size_t src_len) {
     if((rv = write_eof(&cxt)))
         return rv;
 
-    *dst = cxt.dst;
     return (int)cxt.dst_pos;
 }
 
